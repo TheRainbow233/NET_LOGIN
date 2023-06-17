@@ -8,8 +8,7 @@ extern crate native_windows_gui as nwg;
 use std::{
     env,
     fs::{self, File},
-    io,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use nwd::NwgUi;
@@ -41,13 +40,11 @@ pub struct GuiBuilder {
     #[nwg_control(text: "Account", size: (80, 20), position: (20, 9), font: Some(&data.font))]
     label1: nwg::Label,
     #[nwg_control(text: "", focus: true, size: (150, 22), position: (80, 7), font: Some(&data.font))]
-    //#[nwg_layout_item(layout: grid, row: 0, col: 0)]
     account_edit: nwg::TextInput,
 
     #[nwg_control(text: "Password", size: (80, 20), position: (12, 44), font: Some(&data.font))]
     label2: nwg::Label,
     #[nwg_control(text: "", focus: true, size: (150, 22), position: (80, 40), password: Some('*'), font: Some(&data.font))]
-    //#[nwg_layout_item(layout: grid, row: 0, col: 0)]
     password_edit: nwg::TextInput,
 
     #[nwg_control(collection: vec!["ChinaMobile", "ChinaTelecom", "ChinaUnicom"], selected_index :Some(0), size: (120, 4), position: (240, 6), font: Some(&data.font))]
@@ -67,26 +64,21 @@ impl GuiBuilder {
         nwg::stop_thread_dispatch()
     }
 
-    fn dialog_info(&self, text: &str) {
-        nwg::modal_info_message(&self.window, "Info", &format!("{}", text));
-    }
-
     fn auto_start(&self) {
-        let b = self.auto_start.check_state();
+        let check_box = self.auto_start.check_state();
         let key_name = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         let hklm = RegKey::predef(HKEY_CURRENT_USER);
-        match b {
+        match check_box {
             CheckBoxState::Checked => {
                 let get_key = hklm.create_subkey(key_name);
                 match get_key {
                     Ok((reg, _)) => {
-                        let exe_path = format!("\"{}\" -a", get_exepath().to_str().unwrap());
+                        let exe_path = format!("\"{}\" -a", utils::get_exepath().to_str().unwrap());
                         reg.set_value("NET_LOGIN", &exe_path).unwrap();
-                        let reg_text: String =
-                            reg.get_value("NET_LOGIN").expect("readRegister ERROR!");
-                        self.dialog_info(&reg_text);
                     }
-                    Err(err) => utils::dialog_error(&err.to_string()),
+                    Err(err) => {
+                        nwg::error_message("Error", &err.to_string());
+                    }
                 }
             }
             CheckBoxState::Unchecked => {
@@ -106,42 +98,33 @@ impl GuiBuilder {
         let account = self.account_edit.text();
         let password = self.password_edit.text();
         let combo = self.combo_box.selection_string().unwrap();
-        println!("{}", combo);
+        let check_box = self.auto_start.check_state();
+        let operators: &str = match &combo as &str {
+            "ChinaMobile" => "cmcc",
+            "ChinaTelecom" => "telecom",
+            "ChinaUnicom" => "unicom",
+            &_ => todo!(),
+        };
+        let auto_start = match check_box {
+            CheckBoxState::Checked => true,
+            CheckBoxState::Unchecked => false,
+            CheckBoxState::Indeterminate => false,
+        };
         if account != "" && password != "" {
-            let operators: &str = match &combo as &str {
-                "ChinaMobile" => "cmcc",
-                "ChinaTelecom" => "telecom",
-                "ChinaUnicom" => "unicom",
-                &_ => todo!(),
-            };
             let login = login(account, password, operators.to_string());
             match login {
                 Some(mut config) => {
-                    let check_box = self.auto_start.check_state();
-                    let auto_start = match check_box {
-                        CheckBoxState::Checked => true,
-                        CheckBoxState::Unchecked => false,
-                        CheckBoxState::Indeterminate => false,
-                    };
                     config.autostart = auto_start;
                     save_config(config);
-                },
+                }
                 None => todo!(),
             }
         }
     }
 }
 
-fn get_exepath() -> PathBuf {
-    std::env::current_exe().unwrap()
-}
-
-fn get_path() -> PathBuf {
-    std::env::current_dir().unwrap()
-}
-
 fn save_config(config: Config) {
-    let path = get_path().join("NL_config");
+    let path = utils::get_path().join("NL_config");
     let npath = Path::new(&path);
     if !Path::new(&path).exists() {
         File::create(npath).unwrap();
@@ -152,10 +135,9 @@ fn save_config(config: Config) {
 }
 
 fn load_config() -> Option<Config> {
-    let path = get_path().join("NL_config");
+    let path = utils::get_path().join("NL_config");
     let npath = Path::new(&path);
     if !Path::new(&path).exists() {
-        File::create(npath).unwrap();
         return None;
     }
     match fs::read_to_string(npath) {
@@ -165,24 +147,24 @@ fn load_config() -> Option<Config> {
                 Ok(config) => {
                     return Some(config);
                 }
-                Err(_) => {}
+                Err(_) => {
+                    nwg::error_message("Error", "Config_Load ERROR!");
+                }
             }
         }
         Err(_) => {}
     }
-    utils::dialog_error("Config_Load ERROR!");
-    None
+    return None;
 }
 
 fn login(account: String, password: String, operators: String) -> Option<Config> {
     let url = format!("http://192.168.40.2:801/eportal/portal/login?callback=dr1003&login_method=1&user_account=,0,{}@{}&user_password={}&wlan_user_ip={}&wlan_user_ipv6=&wlan_user_mac=000000000000&wlan_ac_ip=&wlan_ac_name=&jsVersion=4.2&terminal_type=1&lang=zh-cn&v=4836&lang=zh", account, operators, password, utils::get_ip().unwrap());
-    println!("{}", url);
     let get = minreq::get(url).send();
     match get {
         Ok(res) => {
             let retu_str = res.as_str().unwrap();
             if !retu_str.contains("dr1003") {
-                utils::dialog_error(&format!("Login Error!:\n{}", retu_str));
+                nwg::error_message("Error", &format!("Login Error!:\n{}", retu_str));
             }
             let mut retu_msg = retu_str
                 .trim_start_matches("dr1003(")
@@ -190,7 +172,7 @@ fn login(account: String, password: String, operators: String) -> Option<Config>
             let serde: Value = serde_json::from_str(retu_msg).unwrap();
             retu_msg = serde.get("msg").unwrap().as_str().unwrap();
             println!("{}", retu_str);
-            utils::dialog(retu_msg);
+            nwg::simple_message("Info", retu_msg);
             return Some(Config {
                 account: account,
                 password: password,
@@ -199,7 +181,7 @@ fn login(account: String, password: String, operators: String) -> Option<Config>
             });
         }
         Err(err) => {
-            utils::dialog_error(err.to_string().as_str());
+            nwg::error_message("Error", err.to_string().as_str());
         }
     }
     None
