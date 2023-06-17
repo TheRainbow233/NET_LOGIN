@@ -9,7 +9,9 @@ pub fn get_exepath() -> PathBuf {
 }
 
 pub fn get_path() -> PathBuf {
-    std::env::current_dir().unwrap()
+    let mut exe_path = get_exepath();
+    exe_path.pop();
+    return exe_path;
 }
 
 pub fn get_ip() -> Option<String> {
