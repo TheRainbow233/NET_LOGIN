@@ -15,6 +15,7 @@ use nwd::NwgUi;
 use nwg::{CheckBoxState, NativeUi};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use notify_rust::Notification;
 use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -68,9 +69,9 @@ impl GuiBuilder {
         let check_box = self.auto_start.check_state();
         let key_name = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
         let hklm = RegKey::predef(HKEY_CURRENT_USER);
+        let get_key = hklm.create_subkey(key_name);
         match check_box {
             CheckBoxState::Checked => {
-                let get_key = hklm.create_subkey(key_name);
                 match get_key {
                     Ok((reg, _)) => {
                         let exe_path = format!("\"{}\" -a", utils::get_exepath().to_str().unwrap());
@@ -82,7 +83,6 @@ impl GuiBuilder {
                 }
             }
             CheckBoxState::Unchecked => {
-                let get_key = hklm.create_subkey(key_name);
                 match get_key {
                     Ok((reg, _)) => {
                         reg.delete_value("NET_LOGIN").unwrap();
@@ -111,11 +111,17 @@ impl GuiBuilder {
             CheckBoxState::Indeterminate => false,
         };
         if account != "" && password != "" {
-            let login = login(account, password, operators.to_string());
+            let login = login(account.clone(), password.clone(), operators.to_string());
             match login {
-                Some(mut config) => {
-                    config.autostart = auto_start;
-                    save_config(config);
+                Some(retu_msg) => {
+                    nwg::simple_message("Info", &retu_msg);
+                    let cfg = Config {
+                        account: account,
+                        password: password,
+                        operators: operators.to_string(),
+                        autostart: auto_start,
+                    };
+                    save_config(cfg);
                 }
                 None => todo!(),
             }
@@ -157,7 +163,7 @@ fn load_config() -> Option<Config> {
     return None;
 }
 
-fn login(account: String, password: String, operators: String) -> Option<Config> {
+fn login(account: String, password: String, operators: String) -> Option<String> {
     let url = format!("http://192.168.40.2:801/eportal/portal/login?callback=dr1003&login_method=1&user_account=,0,{}@{}&user_password={}&wlan_user_ip={}&wlan_user_ipv6=&wlan_user_mac=000000000000&wlan_ac_ip=&wlan_ac_name=&jsVersion=4.2&terminal_type=1&lang=zh-cn&v=4836&lang=zh", account, operators, password, utils::get_ip().unwrap());
     let get = minreq::get(url).send();
     match get {
@@ -165,6 +171,7 @@ fn login(account: String, password: String, operators: String) -> Option<Config>
             let retu_str = res.as_str().unwrap();
             if !retu_str.contains("dr1003") {
                 nwg::error_message("Error", &format!("Login Error!:\n{}", retu_str));
+                return None;
             }
             let mut retu_msg = retu_str
                 .trim_start_matches("dr1003(")
@@ -172,13 +179,7 @@ fn login(account: String, password: String, operators: String) -> Option<Config>
             let serde: Value = serde_json::from_str(retu_msg).unwrap();
             retu_msg = serde.get("msg").unwrap().as_str().unwrap();
             println!("{}", retu_str);
-            nwg::simple_message("Info", retu_msg);
-            return Some(Config {
-                account: account,
-                password: password,
-                operators: operators,
-                autostart: false,
-            });
+            return Some(retu_msg.to_string());
         }
         Err(err) => {
             nwg::error_message("Error", err.to_string().as_str());
@@ -205,8 +206,16 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     for i in args {
         if i.contains("-a") {
-            login(config.account, config.password, config.operators).unwrap();
-            std::process::exit(0);
+            match login(config.account.clone(), config.password.clone(), config.operators.clone()) {
+                Some(retu) => {
+                    Notification::new()
+                    .summary("NET_LOGIN")
+                    .body(&retu)
+                    .show().unwrap();
+                    std::process::exit(0);
+                },
+                None => {},
+            }
         }
     }
 
