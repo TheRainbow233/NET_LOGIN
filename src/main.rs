@@ -16,7 +16,6 @@ use nwg::{CheckBoxState, NativeUi};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use notify_rust::Notification;
-use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Config {
@@ -67,9 +66,8 @@ impl GuiBuilder {
 
     fn auto_start(&self) {
         let check_box = self.auto_start.check_state();
-        let key_name = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-        let hklm = RegKey::predef(HKEY_CURRENT_USER);
-        let get_key = hklm.create_subkey(key_name);
+        let get_key = utils::hklm_createkey();
+        
         match check_box {
             CheckBoxState::Checked => {
                 match get_key {
@@ -231,9 +229,15 @@ fn main() {
         "unicom" => builder.combo_box.set_selection(Some(2)),
         &_ => builder.combo_box.set_selection(Some(0)),
     };
-    let state: CheckBoxState = match config.autostart {
-        true => CheckBoxState::Checked,
-        false => CheckBoxState::Unchecked,
+
+    let get_key = utils::hklm_openkey().expect("Registry load error!");
+    let state: CheckBoxState = match get_key.get_value("NET_LOGIN") as Result<String, std::io::Error> {
+        Ok(_) => {
+            CheckBoxState::Checked
+        },
+        Err(_) => {
+            CheckBoxState::Unchecked
+        },
     };
     builder.auto_start.set_check_state(state);
 

