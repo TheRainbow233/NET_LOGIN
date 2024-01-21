@@ -22,7 +22,6 @@ struct Config {
     account: String,
     password: String,
     operators: String,
-    autostart: bool,
 }
 
 #[derive(Default, NwgUi)]
@@ -96,17 +95,11 @@ impl GuiBuilder {
         let account = self.account_edit.text();
         let password = self.password_edit.text();
         let combo = self.combo_box.selection_string().unwrap();
-        let check_box = self.auto_start.check_state();
         let operators: &str = match &combo as &str {
             "ChinaMobile" => "cmcc",
             "ChinaTelecom" => "telecom",
             "ChinaUnicom" => "unicom",
             &_ => todo!(),
-        };
-        let auto_start = match check_box {
-            CheckBoxState::Checked => true,
-            CheckBoxState::Unchecked => false,
-            CheckBoxState::Indeterminate => false,
         };
         if account != "" && password != "" {
             let login = login(account.clone(), password.clone(), operators.to_string());
@@ -116,8 +109,7 @@ impl GuiBuilder {
                     let cfg = Config {
                         account: account,
                         password: password,
-                        operators: operators.to_string(),
-                        autostart: auto_start,
+                        operators: operators.to_string()
                     };
                     save_config(cfg);
                 }
@@ -190,8 +182,7 @@ fn main() {
     let mut config = Config {
         account: String::new(),
         password: String::new(),
-        operators: String::new(),
-        autostart: false,
+        operators: String::new()
     };
 
     match load_config() {
